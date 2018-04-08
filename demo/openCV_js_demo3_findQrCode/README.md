@@ -1,1 +1,0 @@
-# Use [jsqrcode](https://github.com/LazarSoft/jsqrcode)

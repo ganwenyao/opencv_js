@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<head>
+<style>
+canvas {
+    border: 1px solid black;
+}
+.err {
+    color: red;
+}
+</style>
+</head>
+<body>
+<div id="arucoCodeArea">
+<h2>Input your code</h2>
+<button id="arucoTryIt" disabled="true" onclick="arucoExecuteCode()">Try it</button><br>
+<textarea rows="18" cols="100" id="arucoTestCode" spellcheck="false">
+let inputImage = cv.imread("arucoCanvasInput");
+cv.cvtColor(inputImage, inputImage, cv.COLOR_RGBA2RGB, 0);
+let markerImage = new cv.Mat();
+let dictionary = new cv.Dictionary(cv.DICT_6X6_250);
+let markerIds = new cv.Mat();
+let markerCorners  = new cv.MatVector();
+let rvecs = new cv.Mat();
+let tvecs = new cv.Mat();
+let cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [9.6635571716090658e+02, 0., 2.0679307818305685e+02, 0.,
+                                   9.6635571716090658e+02, 2.9370020600555273e+02, 0., 0., 1.]);
+let distCoeffs = cv.matFromArray(5, 1, cv.CV_64F, [-1.5007354215536557e-03, 9.8722389825801837e-01,
+                                 1.7188452542408809e-02, -2.6805958820424611e-02, -2.3313928379240205e+00]);
+cv.detectMarkers(inputImage, dictionary, markerCorners, markerIds);
+if (markerIds.rows > 0) {
+    cv.drawDetectedMarkers(inputImage, markerCorners, markerIds);
+    cv.estimatePoseSingleMarkers(markerCorners, 0.1, cameraMatrix, distCoeffs, rvecs, tvecs);
+    for(let i=0; i < markerIds.rows; ++i) {
+        let rvec = cv.matFromArray(3, 1, cv.CV_64F, [rvecs.doublePtr(0, i)[0], rvecs.doublePtr(0, i)[1], rvecs.doublePtr(0, i)[2]]);
+        let tvec = cv.matFromArray(3, 1, cv.CV_64F, [tvecs.doublePtr(0, i)[0], tvecs.doublePtr(0, i)[1], tvecs.doublePtr(0, i)[2]]);
+        cv.drawAxis(inputImage, cameraMatrix, distCoeffs, rvec, tvec, 0.1);
+        rvec.delete();
+        tvec.delete();
+    }
+}
+
+cv.imshow("arucoCanvasOutput", inputImage);
+inputImage.delete(); markerImage.delete(); dictionary.delete(); markerIds.delete(); markerCorners.delete(); rvecs.delete(); tvecs.delete(); cameraMatrix.delete(); distCoeffs.delete();
+</textarea>
+<p class="err" id="arucoErr"></p>
+</div>
+<div id="arucoShowcase">
+    <div>
+        <canvas id="arucoCanvasInput"></canvas>
+        <canvas id="arucoCanvasOutput"></canvas>
+    </div>
+    <input type="file" id="arucoInput" name="file" />
+</div>
+<script src="../utils.js"></script>
+<script async src="../opencv.js" id="opencvjs"></script>
+<script>
+
+
+function arucoExecuteCode() {
+    let arucoText = document.getElementById("arucoTestCode").value;
+    try {
+        eval(arucoText);
+        document.getElementById("arucoErr").innerHTML = " ";
+    } catch(err) {
+        document.getElementById("arucoErr").innerHTML = err;
+    }
+}
+
+loadImageToCanvas("aruco.png", "arucoCanvasInput");
+let arucoInputElement = document.getElementById("arucoInput");
+arucoInputElement.addEventListener("change", arucoHandleFiles, false);
+function arucoHandleFiles(e) {
+    let arucoUrl = URL.createObjectURL(e.target.files[0]);
+    loadImageToCanvas(arucoUrl, "arucoCanvasInput");
+}
+function onReady() {
+    document.getElementById("arucoTryIt").disabled = false;
+}
+if (typeof cv !== 'undefined') {
+    onReady();
+} else {
+    document.getElementById("opencvjs").onload = onReady;
+}
+</script>
+</body>
+
