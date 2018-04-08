@@ -74,12 +74,16 @@
 #include "opencv2/video/background_segm.hpp"
 #include "opencv2/objdetect.hpp"
 #include "opencv2/dnn.hpp"
+#include "opencv2/aruco.hpp"
+#include "opencv2/calib3d.hpp"
+#include "opencv2/features2d.hpp"
 
 #include <emscripten/bind.h>
 
 using namespace emscripten;
 using namespace cv;
 using namespace dnn;
+using namespace cv::aruco;
 
 namespace binding_utils
 {

@@ -128,6 +128,10 @@ video = {'': ['CamShift', 'calcOpticalFlowFarneback', 'calcOpticalFlowPyrLK', 'c
 dnn = {'dnn_Net': ['setInput', 'forward'],
        '': ['readNetFromCaffe', 'readNetFromTensorflow', 'readNetFromTorch', 'readNetFromDarknet', 'blobFromImage']}
 
+aruco = {'': ['drawMarker', 'detectMarkers', 'drawDetectedMarkers', 'estimatePoseSingleMarkers', 'drawAxis'],
+         'Dictionary': ['Dictionary', 'create', 'get', 'getPredefinedDictionary'],
+         'DetectorParameters': ['DetectorParameters', 'create']}
+
 def makeWhiteList(module_list):
     wl = {}
     for m in module_list:
@@ -138,7 +142,7 @@ def makeWhiteList(module_list):
                 wl[k] = m[k]
     return wl
 
-white_list = makeWhiteList([core, imgproc, objdetect, video, dnn])
+white_list = makeWhiteList([core, imgproc, objdetect, video, aruco])
 
 # Features to be exported
 export_enums = False
@@ -159,7 +163,7 @@ type_dict = {
 }
 
 def normalize_class_name(name):
-    return re.sub(r"^cv\.", "", name).replace(".", "_")
+    return re.sub(r"^cv\.[a-zA-Z0-9]*\.|cv\.", "", name).replace(".", "_")
 
 
 class ClassProp(object):

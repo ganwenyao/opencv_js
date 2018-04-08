@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<head>
+<style>
+canvas {
+    border: 1px solid black;
+}
+.err {
+    color: red;
+}
+</style>
+</head>
+<body>
+<div id="qrCodeCodeArea">
+<h2>Input your code</h2>
+<button id="qrCodeTryIt" disabled="true" onclick="qrCodeExecuteCode()">Try it</button><br>
+<textarea rows="18" cols="100" id="qrCodeTestCode" spellcheck="false">
+let src = cv.imread("qrCodeCanvasInput");
+let gray = new cv.Mat();
+let gaussion = new cv.Mat();
+let edges = new cv.Mat();
+let biImg = new cv.Mat();
+let ksize = new cv.Size(5, 5);
+
+// Get edges
+cv.cvtColor(src, gray, cv.COLOR_RGB2GRAY, 0);
+cv.GaussianBlur(gray, gaussion, ksize, 0);
+cv.Canny(gaussion, edges, 100, 200);
+
+// Find position detection pattern
+let contours  = new cv.MatVector();
+let hierarchy = new cv.Mat();
+let foundQr = [];
+let k = 0;
+let count = 0;
+cv.findContours(edges, contours, hierarchy, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE);
+
+for (let i = 0; i < contours.size(); ++i) {
+    k = i;
+    count = 0;
+    while (hierarchy.intPtr(0, k)[2] != -1) {
+        k = hierarchy.intPtr(0, k)[2];
+        ++count;
+    }
+    if (count >= 5)
+        foundQr.push(i);
+}
+
+let box  = [];
+for (let i = 0; i < foundQr.length; ++i) {
+    let cnt = contours.get(foundQr[i]);
+    let rotatedRect = cv.minAreaRect(cnt);
+    let ratio = rotatedRect.size.width / rotatedRect.size.height
+    if(ratio < 1.4 && ratio > 0.7) {
+        let vertices = cv.RotatedRect.points(rotatedRect);
+        box.push(vertices);
+//        for (let j = 0; j < 4; j++)
+//            cv.line(src, vertices[j], vertices[(j + 1) % 4], [0, 255, 0, 255], 1, cv.LINE_AA, 0);
+    }
+    cnt.delete();
+}
+
+let qrPoint  = [];
+cv.threshold(gray, biImg, 100, 255, cv.THRESH_BINARY);
+for (let i = 0; i < box.length; ++i)
+    for (let j = i + 1; j < box.length; ++j)
+        if (qrCheck(box[i], box[j]))
+            for (let m = 0; m < 4; ++m) {
+                qrPoint.push(box[i][m]);
+                qrPoint.push(box[j][m]);
+            }
+//for (let i = 0; i < qrPoint.length; ++i)
+//    cv.line(src, qrPoint[i], qrPoint[(i+1) % qrPoint.length], [0, 0, 255, 255], 2);
+if (qrPoint.length > 12) {
+    let qrMat = new cv.Mat(qrPoint.length, 1, cv.CV_32SC2);
+    for (let i = 0; i < qrPoint.length; ++i) {
+        qrMat.intPtr(i, 0)[0] =  qrPoint[i].x;
+        qrMat.intPtr(i, 0)[1] =  qrPoint[i].y;
+    }
+
+    let qrRec = cv.minAreaRect(qrMat);
+    let qrWidth = qrRec.size.width;
+    let qrHeight = qrRec.size.height;
+    let qrVertices = cv.RotatedRect.points(qrRec);
+//    for (let i = 0; i < 4; ++i)
+//       cv.line(src, qrVertices[i], qrVertices[(i+1) % 4], [255, 0, 255, 255], 2);
+
+    let length = (qrWidth + qrHeight) / 2;
+    let qrx = qrRec.center.x - length / 2;
+    let qry = qrRec.center.y - length / 2;
+
+    if (0 < qrx && qrx + length < src.cols && 0 < qry && qry + length < src.rows) {
+        let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [qrVertices[0].x, qrVertices[0].y, qrVertices[1].x,
+                                                         qrVertices[1].y, qrVertices[2].x, qrVertices[2].y,
+                                                         qrVertices[3].x, qrVertices[3].y]);
+        let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [qrx, qry, qrx + length, qry, qrx + length,
+                                                         qry + length, qrx, qry + length]);
+        let M = cv.getPerspectiveTransform(srcTri, dstTri);
+        cv.warpPerspective(src, src, M, src.size());
+        M.delete(); srcTri.delete(); dstTri.delete();
+        let qrRoi = src.roi(new cv.Rect(qrx, qry, length, length));
+        cv.imshow("qrCodeCanvasOutput", qrRoi);
+        qrRoi.delete();
+    }
+    qrMat.delete();
+}
+src.delete(); gray.delete(); gaussion.delete(); edges.delete(); biImg.delete(); contours.delete(); hierarchy.delete();
+
+function pointDistance(P, Q) {
+     return Math.sqrt(Math.pow(P.x - Q.x, 2) + Math.pow(P.y - Q.y, 2));
+}
+
+function qrCheck(a, b) {
+    let dmin1 = Number.MAX_VALUE;
+    let dmin2 = Number.MAX_VALUE;
+    let Pmin1  = new Array(2);
+    let Pmin2  = new Array(2);
+    // Find the nearest two sets of a-b vertices
+    for (let i = 0; i < a.length; ++i)
+        for (let j = 0; j < b.length; ++j) {
+            let d = pointDistance(a[i], b[j]);
+            if (d < dmin1) {
+                dmin2 = dmin1;
+                dmin1 = d;
+                Pmin2[0] = Pmin1[0];
+                Pmin2[1] = Pmin1[1];
+                Pmin1[0] = a[i];
+                Pmin1[1] = b[j];
+            } else if (d < dmin2) {
+                dmin2 = d;
+                Pmin2[0] = a[i];
+                Pmin2[1] = b[j];
+            }
+        }
+
+    // Fixed the position of points
+    let a1 = Pmin1[0];
+    let b1 = Pmin1[1];
+    let a2 = Pmin2[0];
+    let b2 = Pmin2[1];
+
+    let Pa1 = new cv.Point(a1.x + (a2.x - a1.x) / 14, a1.y + (a2.y - a1.y) / 14);
+    let Pb1 = new cv.Point(b1.x + (b2.x - b1.x) / 14, b1.y + (b2.y - b1.y) / 14);
+    let Pa2 = new cv.Point(a2.x + (a1.x - a2.x) / 14, a2.y + (a1.y - a2.y) / 14);
+    let Pb2 = new cv.Point(b2.x + (b1.x - b2.x) / 14, b2.y + (b1.y - b2.y) / 14);
+
+//    cv.line(src, Pa2, Pb2, [255, 0, 0, 255]);
+//    cv.line(src, Pa1, Pb1, [0, 255, 0, 255]);
+    return (isTimingPattern(Pa1, Pb1) || isTimingPattern(Pa2, Pb2));
+}
+
+function isTimingPattern(Pa, Pb) {
+    // Get line pixel
+    if (Math.abs((Pa.y - Pb.y) / (Pa.x - Pb.x)) < 1.3 && Math.abs((Pa.y - Pb.y) / (Pa.x - Pb.x)) > 0.76)
+        return false
+
+    let linePix = [];
+    let lenx = Math.abs(Pa.x - Pb.x) +1;
+    let leny = Math.abs(Pa.y - Pb.y) +1;
+    let len = lenx > leny ? lenx : leny;
+    let x = 0;
+    let y = 0;
+    for (let i = 0; i < len; ++i) {
+        x = Pa.x + Math.round((Pb.x - Pa.x) / (len - 1) * i);
+        y = Pa.y + Math.round((Pb.y - Pa.y) / (len - 1) * i);
+        let pix = biImg.ucharPtr(y, x)[0];
+        linePix.push(pix);
+    }
+
+    if (linePix.length < 10)
+        return false;
+
+    // Remove head and tail pixels
+    let tmp = linePix[0];
+    let lineLen = linePix.length
+    for (let i = 0; i < lineLen; ++i) {
+        if (linePix[i] !== tmp) {
+            linePix.splice(0, i);
+            break;
+        }
+        if (i === lineLen-1)
+            return false;
+    }
+
+    tmp = linePix[linePix.length-1];
+    lineLen = linePix.length;
+    for (let i = 0; i < lineLen; ++i) {
+        if (linePix[lineLen - i] !== tmp) {
+            linePix.splice(lineLen - i + 1, i);
+            break;
+        }
+    }
+
+    if (linePix.length < 10)
+        return false;
+
+    // Count the number of same pixels
+    let countArray = [];
+    let count = 1;
+    tmp = linePix[0];
+    for (let i = 0; i < lineLen; ++i) {
+        if (linePix[i] == tmp)
+            ++count;
+        else {
+            countArray.push(count);
+            count = 1;
+            tmp = linePix[i];
+        }
+    }
+    countArray.push(count);
+    if (countArray.length < 5) {
+        return false;
+    }
+
+    // Get variance
+    let varMin = 50;
+    let sum = 0;
+    let mean = 0;
+    let variance = 0;
+    for (let i = 0; i < countArray.length; ++i)
+        sum += countArray[i];
+    mean = sum / countArray.length;
+    for (let i = 0; i < countArray.length; ++i)
+        variance += Math.pow((countArray[i] - mean), 2);
+    variance = Math.sqrt(variance);
+    return variance < varMin;
+}
+
+</textarea>
+<p class="err" id="qrCodeErr"></p>
+</div>
+<div id="qrCodeShowcase">
+    <div>
+        <canvas id="qrCodeCanvasInput"></canvas>
+        <canvas id="qrCodeCanvasOutput"></canvas>
+    </div>
+    <input type="file" id="qrCodeInput" name="file" />
+</div>
+<script src="../utils.js"></script>
+<script async src="../opencv.js" id="opencvjs"></script>
+<script>
+
+
+function qrCodeExecuteCode() {
+    let qrCodeText = document.getElementById("qrCodeTestCode").value;
+    try {
+        eval(qrCodeText);
+        document.getElementById("qrCodeErr").innerHTML = " ";
+    } catch(err) {
+        document.getElementById("qrCodeErr").innerHTML = err;
+    }
+}
+
+loadImageToCanvas("qrqr.png", "qrCodeCanvasInput");
+let qrCodeInputElement = document.getElementById("qrCodeInput");
+qrCodeInputElement.addEventListener("change", qrCodeHandleFiles, false);
+function qrCodeHandleFiles(e) {
+    let qrCodeUrl = URL.createObjectURL(e.target.files[0]);
+    loadImageToCanvas(qrCodeUrl, "qrCodeCanvasInput");
+}
+function onReady() {
+    document.getElementById("qrCodeTryIt").disabled = false;
+}
+if (typeof cv !== 'undefined') {
+    onReady();
+} else {
+    document.getElementById("opencvjs").onload = onReady;
+}
+</script>
+</body>
+
